@@ -145,29 +145,42 @@ function updateCameraPosition() {
 
 function controlCube() {
     const force = 20; // Magnitud de la fuerza aplicada
-    const velocity = new CANNON.Vec3(0, 0, 0); // Vector de velocidad
 
+    // Crear un vector de dirección con THREE.Vector3 para soportar applyQuaternion
+    let direction = new THREE.Vector3(0, 0, 0);
+
+    // Actualizar la dirección basada en las teclas presionadas
     if (keys['w'] || keys['W']) {
-        velocity.z -= force; // Mover hacia adelante
+        direction.z -= force; // Mover hacia adelante
     }
     if (keys['s'] || keys['S']) {
-        velocity.z += force; // Mover hacia atrás
+        direction.z += force; // Mover hacia atrás
     }
     if (keys['a'] || keys['A']) {
-        velocity.x -= force; // Mover hacia la izquierda
+        direction.x -= force; // Mover hacia la izquierda
     }
     if (keys['d'] || keys['D']) {
-        velocity.x += force; // Mover hacia la derecha
+        direction.x += force; // Mover hacia la derecha
     }
-    if(keys['z'] || keys['Z']){
-        velocity.y += force;
+    if (keys['z'] || keys['Z']) {
+        direction.y += force; // Mover hacia arriba
     }
-    if(keys['x'] || keys['X']){
-        velocity.y -= force;
+    if (keys['x'] || keys['X']) {
+        direction.y -= force; // Mover hacia abajo
     }
 
-    // Establecer la velocidad del cubo
-    boxBody.velocity.x = velocity.x;
-    boxBody.velocity.z = velocity.z;
-    boxBody.velocity.y = velocity.y;
+    // Crear un quaternion para aplicar la rotación de la cámara al vector de dirección
+    const quaternion = new THREE.Quaternion();
+    quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), cameraAngleY);
+
+    // Aplicar la rotación al vector de dirección
+    direction.applyQuaternion(quaternion);
+
+    // Convertir el vector de THREE.Vector3 a CANNON.Vec3
+    const cannonDirection = new CANNON.Vec3(direction.x, direction.y, direction.z);
+
+    // Establecer la velocidad del cubo usando la dirección calculada
+    boxBody.velocity.x = cannonDirection.x;
+    boxBody.velocity.y = cannonDirection.y;
+    boxBody.velocity.z = cannonDirection.z;
 }
