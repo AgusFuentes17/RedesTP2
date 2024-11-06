@@ -2,176 +2,191 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.m
 import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js';
 
 
+// Variables para la cámara y el jugador
+// Variables de la cámara
+let cameraDistance = 10;         // Distancia de la cámara desde el jugador
+let cameraHeight = 5;            // Altura inicial de la cámara sobre el jugador
+let angleAroundPlayer = 0;       // Ángulo de la cámara alrededor del jugador (horizontal)
+let angleVertical = 0.3;         // Ángulo de la cámara en el eje Y (inclinación vertical)
+const rotationSpeed = 0.03;      // Velocidad de rotación de la cámara en horizontal
+const verticalRotationSpeed = 0.02; // Velocidad de rotación en el eje Y (vertical)
+const maxVerticalAngle = Math.PI / 3; // Ángulo máximo en el eje Y (para evitar rotaciones extremas)
+const playerSpeed = 0.1;         // Velocidad de movimiento del jugador
 
-// Variables para el control manual de la cámara
-let rotationSpeed = 0.002; // Sensibilidad de la cámara
-let yaw = 0; // Rotación horizontal de la cámara
-let pitch = 0; // Rotación vertical de la cámara
 
-// Inicializar escena, cámara y renderizador
+
+// Configuración de Three.js
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+// Configurar el renderer
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// Posición inicial de la cámara
-camera.position.z = 20;
 
-// Configuración de Cannon.js para la física
-const world = new CANNON.World();
-world.gravity.set(0, 0, 0); // Sin gravedad, ya que queremos que el cubo siga al planeta
+// Crear la cámara
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.set(0, 0, 20); // Posicionar la cámara en un lugar conveniente para ver el planeta y la esfera
+scene.add(camera);
 
-// Crear el planeta en Three.js
-const planetGeometry = new THREE.SphereGeometry(10, 32, 32);
-const planetMaterial = new THREE.MeshStandardMaterial({ color: 0x0077ff, wireframe: false });
+camera.fov = 75; // Cambia 45 por el valor de FOV deseado
+camera.updateProjectionMatrix(); // Asegúrate de actualizar la matriz de proyección
+
+
+// Agregar luces a la escena
+const light = new THREE.DirectionalLight(0xffffff, 1);
+light.position.set(10, 10, 10);
+scene.add(light);
+
+const ambientLight = new THREE.AmbientLight(0x404040); // Luz ambiental suave
+scene.add(ambientLight);
+
+const textureLoader = new THREE.TextureLoader();
+const planetTexture = textureLoader.load('planeta.jpg')
+
+// Crear la esfera del planeta en Three.js
+const planetGeometry = new THREE.SphereGeometry(20, 32, 32); // esfera de radio 5
+const planetMaterial = new THREE.MeshStandardMaterial({ map: planetTexture });
+
 const planetMesh = new THREE.Mesh(planetGeometry, planetMaterial);
 scene.add(planetMesh);
 
-// Crear el planeta en Cannon.js
-const planetShape = new CANNON.Sphere(10); // Radio de 10 igual que en Three.js
-const planetBody = new CANNON.Body({ mass: 0 }); // Sin masa, así que no se mueve
-planetBody.addShape(planetShape);
+// Configurar Cannon.js
+const world = new CANNON.World();
+world.gravity.set(0, 0, 0); // Sin gravedad global, ya que usaremos gravedad radial
+
+// Crear cuerpo de Cannon.js para el planeta (solo como referencia, no necesita gravedad)
+const planetBody = new CANNON.Body({
+    mass: 0, // El planeta es estático, así que su masa es 0
+    shape: new CANNON.Sphere(20) // Esfera de radio 5, como el planeta de Three.js
+});
+planetBody.position.set(0, 0, 0); // Ubicar en el centro de la escena
 world.addBody(planetBody);
 
-// Crear el cubo en Three.js
-const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
-const cubeMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-const cubeMesh = new THREE.Mesh(cubeGeometry, cubeMaterial);
-scene.add(cubeMesh);
+// Crear la esfera del jugador en Three.js
+const playerGeometry = new THREE.SphereGeometry(0.5, 32, 32); // esfera de radio 0.5
+const playerMaterial = new THREE.MeshStandardMaterial({ color: 0xff4500 });
+const playerMesh = new THREE.Mesh(playerGeometry, playerMaterial);
+scene.add(playerMesh);
 
-// Crear el cubo en Cannon.js
-const cubeShape = new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5)); // Tamaño acorde con Three.js
-const cubeBody = new CANNON.Body({ mass: 1 });
-cubeBody.addShape(cubeShape);
-cubeBody.position.set(0, 11, 0); // Posición inicial fuera del planeta
-world.addBody(cubeBody);
-
-const ambientLight = new THREE.AmbientLight(0x404040);
-scene.add(ambientLight);
-
-const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-directionalLight.position.set(5, 5, 5).normalize();
-scene.add(directionalLight);
-
-const moveAngle = 0.1; // Ajusta la velocidad de rotación
-
-window.addEventListener('keydown', (event) => {
-    // Vector desde el centro del planeta hacia el cubo
-    const planetCenter = new CANNON.Vec3(0, 0, 0);
-    const direction = cubeBody.position.vsub(planetCenter).unit();
-
-    // Convertir a THREE.Vector3 para aplicar rotación
-    const directionThree = new THREE.Vector3(direction.x, direction.y, direction.z);
-
-    // Calcular desplazamiento de acuerdo con la tecla presionada
-    let axis;
-    switch (event.key) {
-        case 'ArrowUp':
-            axis = new THREE.Vector3(1, 0, 0); // Eje para rotación sobre X
-            break;
-        case 'ArrowDown':
-            axis = new THREE.Vector3(-1, 0, 0); // Eje opuesto en X
-            break;
-        case 'ArrowLeft':
-            axis = new THREE.Vector3(0, 0, 1); // Eje para rotación sobre Z
-            break;
-        case 'ArrowRight':
-            axis = new THREE.Vector3(0, 0, -1); // Eje opuesto en Z
-            break;
-        default:
-            return;
-    }
-
-    // Crear una rotación en torno al eje indicado
-    const quaternion = new THREE.Quaternion();
-    quaternion.setFromAxisAngle(axis, moveAngle); // Rotar en función del ángulo
-    directionThree.applyQuaternion(quaternion); // Aplicar rotación al vector dirección
-
-    // Convertir el vector de regreso a CANNON.Vec3
-    const newDirection = new CANNON.Vec3(directionThree.x, directionThree.y, directionThree.z);
-
-    // Actualizar la posición del cubo en la superficie del planeta
-    const targetPosition = newDirection.scale(10 + 0.5); // Radio del planeta + mitad del cubo
-    cubeBody.position.copy(targetPosition);
+// Crear el cuerpo de Cannon.js para la esfera del jugador
+const playerBody = new CANNON.Body({
+    mass: 1, // Masa para la física
+    shape: new CANNON.Sphere(0.5) // Radio de 0.5 como en Three.js
 });
+playerBody.position.set(0, 21, 0); // Colocar cerca del "planeta"
+world.addBody(playerBody);
 
-camera.position.set(0, 20, 30);
-camera.lookAt(0, 0, 0); // Apuntar al centro de la escena
-
-// Posición inicial del cubo sobre el planeta
-cubeBody.position.set(0, 10.5, 0); // Radio del planeta (10) + mitad del tamaño del cubo (0.5)
-cubeMesh.position.copy(cubeBody.position); // Sincronizar visualmente
-
-// Reforzar la actualización de la posición del cubo para mantenerlo en la superficie
-function keepCubeOnPlanetSurface() {
-    const planetCenter = new CANNON.Vec3(0, 0, 0);
-    const direction = cubeBody.position.vsub(planetCenter).unit();
-    const targetPosition = direction.scale(10 + 0.5); // Radio del planeta + mitad del cubo
-    cubeBody.position.copy(targetPosition);
-    cubeMesh.position.copy(cubeBody.position); // Actualizar la posición en Three.js
+// Función para calcular la gravedad radial y aplicarla al cuerpo del jugador
+function applyRadialGravity(body, targetPosition, gravityStrength) {
+    const direction = new CANNON.Vec3().copy(targetPosition).vsub(body.position); // Dirección hacia el planeta
+    const distance = direction.length(); // Usamos .length() para obtener la distancia actual al centro
+    direction.normalize(); // Convertir en un vector unitario
+    
+    // Aplicar fuerza proporcional a la distancia (inversa al cuadrado)
+    const force = direction.scale(gravityStrength / (distance * distance));
+    body.applyForce(force);
 }
 
-const canvas = renderer.domElement;
 
-// Detectar el clic en el canvas para iniciar el bloqueo de cursor
-canvas.addEventListener('click', () => {
-    canvas.requestPointerLock();
+// Variables para el control de movimiento
+const playerVelocity = new CANNON.Vec3();
+const speed = 0.1; // Velocidad de movimiento
+const gravityStrength = 1000; // Intensidad de la gravedad radial
+
+// Escuchar eventos de teclado
+const keys = { w: false, a: false, s: false, d: false };
+document.addEventListener("keydown", (event) => {
+    keys[event.key] = true;
+});
+document.addEventListener("keyup", (event) => {
+    keys[event.key] = false;
 });
 
+// Aplicar controles WASD y gravedad en cada actualización
+const maxDistance = 8; // Distancia máxima permitida desde el centro del planeta
+const retentionStrength = 100; // Intensidad de la fuerza de retención
 
-// Manejar el movimiento del mouse cuando el puntero está bloqueado
-document.addEventListener('mousemove', (event) => {
-    // Solo si el puntero está bloqueado
-    if (document.pointerLockElement === canvas) {
-        yaw -= event.movementX * rotationSpeed;
-        pitch -= event.movementY * rotationSpeed;
+function update() {
+    // Gravedad radial
+    applyRadialGravity(playerBody, planetBody.position, gravityStrength);
 
-        // Limitar el ángulo de pitch para que la cámara no gire completamente en vertical
-        pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
 
-        // Aplicar las rotaciones a la cámara
-        camera.rotation.set(pitch, yaw, 0);
+    // Movimiento del jugador hacia adelante/atrás en la dirección de la cámara
+    let moveZ = 0;
+    if (keys.ArrowUp) moveZ = -playerSpeed;
+    if (keys.ArrowDown) moveZ = playerSpeed;
+
+    // Rotar el jugador y la cámara con las teclas izquierda/derecha
+    if (keys.ArrowLeft) angleAroundPlayer += rotationSpeed;
+    if (keys.ArrowRight) angleAroundPlayer -= rotationSpeed;
+
+    // Calcular la dirección de movimiento en función del ángulo de rotación
+    const direction = new THREE.Vector3(
+        Math.sin(angleAroundPlayer),
+        0,
+        Math.cos(angleAroundPlayer)
+    );
+
+    // Mover el jugador en la dirección calculada
+    playerMesh.position.add(direction.clone().multiplyScalar(moveZ));
+    playerMesh.rotation.y = angleAroundPlayer; // Rotar el jugador en la misma dirección
+
+    // Calcular la posición de la cámara detrás del jugador en función del ángulo
+    const offsetX = Math.sin(angleAroundPlayer) * cameraDistance;
+    const offsetZ = Math.cos(angleAroundPlayer) * cameraDistance;
+
+    camera.position.set(
+        playerMesh.position.x - offsetX,
+        playerMesh.position.y + cameraHeight,
+        playerMesh.position.z - offsetZ
+    );
+
+    // Asegurar que la cámara mire al jugador
+    camera.lookAt(playerMesh.position);
+    // Asegurar que la cámara siempre mire hacia el jugador
+    camera.lookAt(playerMesh.position);
+
+    // Lógica de movimiento con WASD (movimiento secundario del jugador)
+    if (keys.w || keys.W) playerVelocity.z = -speed;
+    if (keys.s || keys.S) playerVelocity.z = speed;
+    if (keys.a || keys.A) playerVelocity.x = -speed;
+    if (keys.d || keys.D) playerVelocity.x = speed;
+    if (keys.f || keys.F) {
+        playerBody.velocity.set(0, 0, 0);
+        playerVelocity.set(0, 0, 0);
     }
-});
 
+    // Aplicar la velocidad de movimiento en Cannon.js
+    playerBody.velocity.x += playerVelocity.x;
+    playerBody.velocity.z += playerVelocity.z;
+    playerVelocity.set(0, 0, 0); // Resetear la velocidad tras aplicarla
 
-// Configurar la posición y orientación de la cámara en tercera persona
-function updateCameraPosition() {
-    const offsetDistance = 5; // Distancia de la cámara al cubo
-    const cameraHeight = 3;   // Altura de la cámara sobre el cubo
+    // Aplicar fuerza de retención si el jugador se acerca al límite
+    const distanceToPlanet = playerBody.position.distanceTo(planetBody.position);
+    if (distanceToPlanet > maxDistance) {
+        const directionToPlanet = planetBody.position.vsub(playerBody.position).unit();
+        const retentionForce = directionToPlanet.scale(retentionStrength * (distanceToPlanet - maxDistance));
+        playerBody.applyForce(retentionForce);
+    }
 
-    // Posición del cubo
-    const cubePosition = new THREE.Vector3(cubeBody.position.x, cubeBody.position.y, cubeBody.position.z);
-
-    // Offset de la cámara respecto al cubo
-    const cameraOffset = new THREE.Vector3(0, cameraHeight, -offsetDistance);
-    cameraOffset.applyQuaternion(cubeMesh.quaternion); // Orientar en la dirección del cubo
-    camera.position.copy(cubePosition).add(cameraOffset); // Ubicar la cámara detrás y encima del cubo
-
-    // Mantener la vista enfocada en el cubo
-    camera.lookAt(cubeMesh.position);
+    // Sincronizar la posición y rotación de Three.js con Cannon.js
+    playerMesh.position.copy(playerBody.position);
+    playerMesh.quaternion.copy(playerBody.quaternion);
 }
 
-// En tu bucle de animación, llama a esta función
+
+
+// Animar la escena
 function animate() {
     requestAnimationFrame(animate);
+    world.step(1 / 60); // Simulación de física
+    update(); // Actualizar controles y gravedad
 
-    // Actualiza la simulación de física de Cannon.js
-    world.step(1 / 60);
-
-    // Mantener el cubo en la superficie del planeta
-    keepCubeOnPlanetSurface();
-
-    // Sincronizar la posición y rotación del cubo
-    cubeMesh.position.copy(cubeBody.position);
-    cubeMesh.quaternion.copy(cubeBody.quaternion);
-
-    // Actualizar la posición de la cámara en tercera persona
-    updateCameraPosition();
-
-    // Renderizar la escena
+    // Renderizar escena
     renderer.render(scene, camera);
 }
+
 animate();
+
 
