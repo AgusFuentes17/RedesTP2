@@ -101,6 +101,11 @@ function onKeyUp(event) {
         case 'D':
             moveRight = false;
             break;
+        case 'f':
+        case 'F':
+            cubeBody.velocity.set(0, 0, 0);      // Detener la velocidad
+            cubeBody.angularVelocity.set(0, 0, 0); // Detener la rotación
+            break;
     }
 }
 
@@ -118,6 +123,64 @@ function applyRadialGravity(body, targetPosition, gravityStrength) {
     const force = direction.scale(gravityStrength / (distance * distance));
     body.applyForce(force);
 }
+
+const shotSpeed = 10;
+const shots = [];
+const shotLifetime = 3000;
+const mouse = new THREE.Vector2();          // Almacena la posición del mouse
+const raycaster = new THREE.Raycaster();    // Raycaster para calcular la dirección del disparo
+
+// Actualizar la posición del mouse en el vector "mouse"
+function onMouseMove(event) {
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+}
+
+window.addEventListener('mousemove', onMouseMove, false);
+
+// Escuchar clic izquierdo para disparar
+window.addEventListener('mousedown', (event) => {
+    if (event.button === 0) {   // 0 es el botón izquierdo del mouse
+        shootCube();
+    }
+});
+
+function shootCube() {
+    // Crear una geometría y material para el cubo
+    const cubeGeometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+    const cubeMaterial = new THREE.MeshBasicMaterial({ color: 0x00AAE4 });
+    const shotMesh = new THREE.Mesh(cubeGeometry, cubeMaterial);
+
+    // Posicionar el cubo en la posición actual del jugador
+    shotMesh.position.copy(cubeBody.position);
+
+    // Agregar el cubo a la escena
+    scene.add(shotMesh);
+
+    // Crear un cuerpo físico para el cubo en Cannon.js
+    const shotBody = new CANNON.Body({
+        mass: 0.1,                
+        shape: new CANNON.Box(new CANNON.Vec3(0.25, 0.25, 0.25))
+    });
+
+    // Posicionar el cuerpo del cubo en Cannon.js
+    shotBody.position.copy(cubeBody.position);
+
+    // Usar el raycaster para calcular la dirección del disparo
+    raycaster.setFromCamera(mouse, camera);
+    const shotDirection = raycaster.ray.direction.clone();  // Copiar la dirección del raycaster
+
+    // Aplicar la velocidad en la dirección del disparo
+    shotBody.velocity = new CANNON.Vec3(shotDirection.x, shotDirection.y, shotDirection.z).scale(shotSpeed);
+
+    // Agregar el cubo al mundo de física
+    world.addBody(shotBody);
+
+    // Guardar el cubo y su cuerpo en un array para manejar su vida útil
+    shots.push({ mesh: shotMesh, body: shotBody, timestamp: Date.now() });
+}
+
+
 
 
 function animate() {
@@ -164,6 +227,20 @@ function animate() {
     cube.position.copy(cubeBody.position);
     cube.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), rotationAngle);  // Rota el cubo junto con la cámara
 
+        // Actualizar los disparos
+    for (let i = shots.length - 1; i >= 0; i--) {
+        const shot = shots[i];
+
+        // Sincronizar la posición del cubo de Three.js con el cuerpo de Cannon.js
+        shot.mesh.position.copy(shot.body.position);
+
+        // Eliminar el cubo si ha superado su tiempo de vida
+        if (Date.now() - shot.timestamp > shotLifetime) {
+            scene.remove(shot.mesh);            // Eliminar de Three.js
+            world.removeBody(shot.body);        // Eliminar de Cannon.js
+            shots.splice(i, 1);                 // Eliminar del array de disparos
+        }
+    }
     // Colocar la cámara en una posición relativa al cubo y rotarla
     const radius = 5;
     camera.position.x = cube.position.x + radius * Math.sin(rotationAngle);
