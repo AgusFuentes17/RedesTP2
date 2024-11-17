@@ -2,6 +2,13 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.m
 import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js';
 
 
+// Conectar a Socket.IO
+const socket = io();
+
+// Almacena las posiciones de otros jugadores
+const otherPlayers = {};
+
+
 // Configura la escena, la cámara y el renderizador
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -178,7 +185,76 @@ function shootCube() {
 
     // Guardar el cubo y su cuerpo en un array para manejar su vida útil
     shots.push({ mesh: shotMesh, body: shotBody, timestamp: Date.now() });
+
+    socket.emit('shoot', {
+        position: { x: cubeBody.position.x, y: cubeBody.position.y, z: cubeBody.position.z },
+        direction: { x: shotDirection.x, y: shotDirection.y, z: shotDirection.z }
+    });
 }
+
+
+// Escuchar las posiciones de otros jugadores desde el servidor
+// Escuchar las posiciones de otros jugadores desde el servidor
+socket.on('updatePosition', (data) => {
+    const { id, position, rotation } = data;
+
+    // Si el cubo para el jugador no existe, crearlo en Three.js
+    if (!otherPlayers[id]) {
+        const geometry = new THREE.BoxGeometry(1, 1, 1);
+        const material = new THREE.MeshBasicMaterial({ color: 0x0000ff }); // Color para distinguir a otros jugadores
+        const playerMesh = new THREE.Mesh(geometry, material);
+        scene.add(playerMesh);
+        otherPlayers[id] = playerMesh;
+    }
+
+    // Actualizar la posición y rotación del cubo del jugador
+    otherPlayers[id].position.set(position.x, position.y, position.z);
+    otherPlayers[id].rotation.y = rotation;
+});
+
+
+// Escuchar cuando un jugador se desconecta y eliminarlo de la escena
+// Escuchar cuando un jugador se desconecta y eliminar su cubo de la escena
+socket.on('playerDisconnected', (id) => {
+    if (otherPlayers[id]) {
+        scene.remove(otherPlayers[id]); // Eliminar de Three.js
+        delete otherPlayers[id];        // Eliminar del objeto de almacenamiento
+    }
+});
+
+socket.on('playerShot', (data) => {
+    const { position, direction } = data;
+
+    // Crear un cubo para el disparo
+    const shotGeometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+    const shotMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 }); // Color de disparo de otros jugadores
+    const shotMesh = new THREE.Mesh(shotGeometry, shotMaterial);
+    shotMesh.position.set(position.x, position.y, position.z);
+    scene.add(shotMesh);
+
+    // Crear el cuerpo de Cannon.js para el disparo
+    const shotBody = new CANNON.Body({
+        mass: 0.1,
+        shape: new CANNON.Box(new CANNON.Vec3(0.25, 0.25, 0.25))
+    });
+    shotBody.position.set(position.x, position.y, position.z);
+    shotBody.velocity.set(direction.x * shotSpeed, direction.y * shotSpeed, direction.z * shotSpeed);
+    world.addBody(shotBody);
+
+    // Añadir el disparo a una lista para manejar colisiones y eliminarlo después de un tiempo
+    shots.push({ mesh: shotMesh, body: shotBody, timestamp: Date.now() });
+});
+socket.on('playerHit', (data) => {
+    const { id } = data;
+    if (otherPlayers[id]) {
+        alert("Fuiste eliminado");
+    
+        // Desconectar al cliente después del mensaje
+        socket.disconnect();
+        scene.remove(otherPlayers[id]);
+        delete otherPlayers[id];
+    }
+});
 
 
 
@@ -246,6 +322,14 @@ function animate() {
     camera.position.x = cube.position.x + radius * Math.sin(rotationAngle);
     camera.position.y = cube.position.y + 2;
     camera.position.z = cube.position.z + radius * Math.cos(rotationAngle);
+
+    // Enviar datos de posición y rotación del propio jugador al servidor
+    socket.emit('updatePosition', {
+        id: socket.id,
+        position: { x: cube.position.x, y: cube.position.y, z: cube.position.z },
+        rotation: rotationAngle
+    });
+
 
     // Hacer que la cámara mire hacia el cubo
     camera.lookAt(cube.position);
