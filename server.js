@@ -40,7 +40,7 @@ io.on('connection', (socket) => {
     console.log('Nuevo jugador conectado:', socket.id);
 
     // Almacenar el nuevo jugador
-    players[socket.id] = { position: { x: 0, y: 10, z: 0 }, rotation: 0 };
+    players[socket.id] = { position: { x: 0, y: -100, z: 0 }, rotation: 0 };
 
     // Escuchar los datos de posición enviados por el cliente
     socket.on('updatePosition', (data) => {

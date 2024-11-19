@@ -47,7 +47,7 @@ world.addBody(sphereBody);
 // Crear un cuerpo físico para el cubo
 const cubeBody = new CANNON.Body({
     mass: 1,  // Si es 0, el objeto será estático
-    position: new CANNON.Vec3(0, 5, 0),  // Posición inicial
+    position: new CANNON.Vec3(0, 100, 0),  // Posición inicial
     shape: new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5))  // Dimensiones del cubo
 });
 world.addBody(cubeBody);
